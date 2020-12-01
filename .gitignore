@@ -1,0 +1,16 @@
+# profile
+profileCPU/
+profileMem/
+
+# Binaries for programs and plugins
+byconclient
+byconserver
+*.exe
+*.exe~
+*.dll
+
+# other
+keys/
+.idea/
+test.bat
+scripts/linux/test.sh
