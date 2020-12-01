@@ -18,9 +18,8 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type BYCONClient interface {
-	Ordering(ctx context.Context, in *OrderingArgs, opts ...grpc.CallOption) (*OrderingReply, error)
-	PrePrepare(ctx context.Context, in *PrePrepareArgs, opts ...grpc.CallOption) (*PrePrepareReply, error)
-	Prepare(ctx context.Context, in *PrepareArgs, opts ...grpc.CallOption) (*PrepareReply, error)
+	PrePrepare(ctx context.Context, in *PrePrepareArgs, opts ...grpc.CallOption) (*empty.Empty, error)
+	Prepare(ctx context.Context, in *PrepareArgs, opts ...grpc.CallOption) (*empty.Empty, error)
 	Commit(ctx context.Context, in *CommitArgs, opts ...grpc.CallOption) (*empty.Empty, error)
 }
 
@@ -32,17 +31,8 @@ func NewBYCONClient(cc grpc.ClientConnInterface) BYCONClient {
 	return &bYCONClient{cc}
 }
 
-func (c *bYCONClient) Ordering(ctx context.Context, in *OrderingArgs, opts ...grpc.CallOption) (*OrderingReply, error) {
-	out := new(OrderingReply)
-	err := c.cc.Invoke(ctx, "/proto.BYCON/Ordering", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *bYCONClient) PrePrepare(ctx context.Context, in *PrePrepareArgs, opts ...grpc.CallOption) (*PrePrepareReply, error) {
-	out := new(PrePrepareReply)
+func (c *bYCONClient) PrePrepare(ctx context.Context, in *PrePrepareArgs, opts ...grpc.CallOption) (*empty.Empty, error) {
+	out := new(empty.Empty)
 	err := c.cc.Invoke(ctx, "/proto.BYCON/PrePrepare", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -50,8 +40,8 @@ func (c *bYCONClient) PrePrepare(ctx context.Context, in *PrePrepareArgs, opts .
 	return out, nil
 }
 
-func (c *bYCONClient) Prepare(ctx context.Context, in *PrepareArgs, opts ...grpc.CallOption) (*PrepareReply, error) {
-	out := new(PrepareReply)
+func (c *bYCONClient) Prepare(ctx context.Context, in *PrepareArgs, opts ...grpc.CallOption) (*empty.Empty, error) {
+	out := new(empty.Empty)
 	err := c.cc.Invoke(ctx, "/proto.BYCON/Prepare", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -72,9 +62,8 @@ func (c *bYCONClient) Commit(ctx context.Context, in *CommitArgs, opts ...grpc.C
 // All implementations must embed UnimplementedBYCONServer
 // for forward compatibility
 type BYCONServer interface {
-	Ordering(context.Context, *OrderingArgs) (*OrderingReply, error)
-	PrePrepare(context.Context, *PrePrepareArgs) (*PrePrepareReply, error)
-	Prepare(context.Context, *PrepareArgs) (*PrepareReply, error)
+	PrePrepare(context.Context, *PrePrepareArgs) (*empty.Empty, error)
+	Prepare(context.Context, *PrepareArgs) (*empty.Empty, error)
 	Commit(context.Context, *CommitArgs) (*empty.Empty, error)
 	mustEmbedUnimplementedBYCONServer()
 }
@@ -83,13 +72,10 @@ type BYCONServer interface {
 type UnimplementedBYCONServer struct {
 }
 
-func (UnimplementedBYCONServer) Ordering(context.Context, *OrderingArgs) (*OrderingReply, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Ordering not implemented")
-}
-func (UnimplementedBYCONServer) PrePrepare(context.Context, *PrePrepareArgs) (*PrePrepareReply, error) {
+func (UnimplementedBYCONServer) PrePrepare(context.Context, *PrePrepareArgs) (*empty.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PrePrepare not implemented")
 }
-func (UnimplementedBYCONServer) Prepare(context.Context, *PrepareArgs) (*PrepareReply, error) {
+func (UnimplementedBYCONServer) Prepare(context.Context, *PrepareArgs) (*empty.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Prepare not implemented")
 }
 func (UnimplementedBYCONServer) Commit(context.Context, *CommitArgs) (*empty.Empty, error) {
@@ -106,24 +92,6 @@ type UnsafeBYCONServer interface {
 
 func RegisterBYCONServer(s grpc.ServiceRegistrar, srv BYCONServer) {
 	s.RegisterService(&_BYCON_serviceDesc, srv)
-}
-
-func _BYCON_Ordering_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(OrderingArgs)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(BYCONServer).Ordering(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/proto.BYCON/Ordering",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(BYCONServer).Ordering(ctx, req.(*OrderingArgs))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _BYCON_PrePrepare_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -184,10 +152,6 @@ var _BYCON_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "proto.BYCON",
 	HandlerType: (*BYCONServer)(nil),
 	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "Ordering",
-			Handler:    _BYCON_Ordering_Handler,
-		},
 		{
 			MethodName: "PrePrepare",
 			Handler:    _BYCON_PrePrepare_Handler,

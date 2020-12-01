@@ -27,30 +27,16 @@ type EntryID struct {
 }
 
 type Entry struct {
-	Mut sync.Mutex
-	PP  *PrePrepareArgs
-
-	PreparedCert *QuorumCert // SigContent是PrepareHash
-	Prepared     bool
-
-	CommittedCert *QuorumCert // SigContent是CommitHash
-	Committed     bool
+	Mut        sync.Mutex
+	PP         *PrePrepareArgs
+	P          []*PrepareArgs
+	SendCommit bool
+	C          []*CommitArgs
+	Committed  bool
 
 	PreEntryHash *EntryHash
 	Digest       *EntryHash
-	PrepareHash  *EntryHash // 签名内容：hash("prepare"+Digest)
-	CommitHash   *EntryHash // 签名内容: hash(“commit”+PrepareHash) // 因为有些节点先收到P再收到PP，没有Digest，所以用的是PrepareHash
 }
-
-//type Entry struct {
-//	Mut        sync.Mutex
-//	PP         *PrePrepareArgs
-//	P          []*PrepareArgs
-//	SendCommit bool
-//	C          []*CommitArgs
-//	Committed  bool
-//	Digest     *EntryHash
-//}
 
 func (e *Entry) String() string {
 	return fmt.Sprintf("Entry{View: %d, Seq: %d, Committed: %v}",
@@ -88,38 +74,4 @@ func (e *Entry) GetDigest() EntryHash {
 	copy(e.Digest[:], sum)
 
 	return *e.Digest
-}
-
-func (e *Entry) GetPrepareHash() EntryHash {
-	// return cached hash if available
-	if e.PrepareHash != nil {
-		return *e.PrepareHash
-	}
-
-	s512 := sha512.New()
-	s512.Write([]byte("prepare"))
-	s512.Write(e.GetDigest().ToSlice())
-
-	e.PrepareHash = new(EntryHash)
-	sum := s512.Sum(nil)
-	copy(e.PrepareHash[:], sum)
-
-	return *e.PrepareHash
-}
-
-func (e *Entry) GetCommitHash() EntryHash {
-	// return cached hash if available
-	if e.CommitHash != nil {
-		return *e.CommitHash
-	}
-
-	s512 := sha512.New()
-	s512.Write([]byte("commit"))
-	s512.Write(e.GetPrepareHash().ToSlice())
-
-	e.CommitHash = new(EntryHash)
-	sum := s512.Sum(nil)
-	copy(e.CommitHash[:], sum)
-
-	return *e.CommitHash
 }

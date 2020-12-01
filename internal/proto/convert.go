@@ -2,9 +2,7 @@
 package proto
 
 import (
-	"github.com/joe-zxh/bycon/config"
 	"github.com/joe-zxh/bycon/data"
-	"math/big"
 )
 
 func PP2Proto(dpp *data.PrePrepareArgs) *PrePrepareArgs {
@@ -32,22 +30,42 @@ func (pp *PrePrepareArgs) Proto2PP() *data.PrePrepareArgs {
 	return dpp
 }
 
-func (pO *OrderingArgs) GetDataCommands() *[]data.Command {
-	commands := make([]data.Command, 0, len(pO.GetCommands()))
-	for _, cmd := range pO.GetCommands() {
-		commands = append(commands, cmd.Proto2Command())
+func P2Proto(dp *data.PrepareArgs) *PrepareArgs {
+	return &PrepareArgs{
+		View:   dp.View,
+		Seq:    dp.Seq,
+		Digest: dp.Digest.ToSlice(),
+		Sender: dp.Sender,
 	}
-	return &commands
 }
 
-func Commands2OrderingArgs(cmds *[]data.Command) *OrderingArgs {
-	commands := make([]*Command, 0, len(*cmds))
-	for _, cmd := range *cmds {
-		commands = append(commands, CommandToProto(cmd))
+func (p *PrepareArgs) Proto2P() *data.PrepareArgs {
+	dpp := &data.PrepareArgs{
+		View:   p.View,
+		Seq:    p.Seq,
+		Sender: p.Sender,
 	}
-	return &OrderingArgs{
-		Commands: commands,
+	copy(dpp.Digest[:], p.Digest[:len(dpp.Digest)])
+	return dpp
+}
+
+func C2Proto(dc *data.CommitArgs) *CommitArgs {
+	return &CommitArgs{
+		View:   dc.View,
+		Seq:    dc.Seq,
+		Digest: dc.Digest.ToSlice(),
+		Sender: dc.Sender,
 	}
+}
+
+func (c *CommitArgs) Proto2C() *data.CommitArgs {
+	dc := &data.CommitArgs{
+		View:   c.View,
+		Seq:    c.Seq,
+		Sender: c.Sender,
+	}
+	copy(dc.Digest[:], c.Digest[:len(dc.Digest)])
+	return dc
 }
 
 func CommandToProto(cmd data.Command) *Command {
@@ -56,47 +74,4 @@ func CommandToProto(cmd data.Command) *Command {
 
 func (cmd *Command) Proto2Command() data.Command {
 	return data.Command(cmd.GetData())
-}
-
-func PartialSig2Proto(dPs *data.PartialSig) *PartialSig {
-	return &PartialSig{
-		ReplicaID: int32(dPs.ID),
-		R:         dPs.R.Bytes(),
-		S:         dPs.S.Bytes(),
-	}
-}
-
-func (pPs *PartialSig) Proto2PartialSig() *data.PartialSig {
-	r := big.NewInt(0)
-	s := big.NewInt(0)
-	r.SetBytes(pPs.GetR())
-	s.SetBytes(pPs.GetS())
-	return &data.PartialSig{
-		ID: config.ReplicaID(pPs.GetReplicaID()),
-		R:  r,
-		S:  s,
-	}
-}
-
-func QuorumCertToProto(qc *data.QuorumCert) *QuorumCert {
-	sigs := make([]*PartialSig, 0, len(qc.Sigs))
-	for _, psig := range qc.Sigs {
-		sigs = append(sigs, PartialSig2Proto(&psig))
-	}
-	return &QuorumCert{
-		Sigs:       sigs,
-		SigContent: qc.SigContent[:],
-	}
-}
-
-func (pqc *QuorumCert) Proto2QuorumCert() *data.QuorumCert {
-	qc := &data.QuorumCert{
-		Sigs: make(map[config.ReplicaID]data.PartialSig),
-	}
-	copy(qc.SigContent[:], pqc.SigContent)
-	for _, ppsig := range pqc.GetSigs() {
-		psig := ppsig.Proto2PartialSig()
-		qc.Sigs[psig.ID] = *psig
-	}
-	return qc
 }

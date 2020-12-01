@@ -1,6 +1,7 @@
 package consensus
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"go.uber.org/atomic"
@@ -11,7 +12,6 @@ import (
 	"github.com/joe-zxh/bycon/config"
 	"github.com/joe-zxh/bycon/data"
 	"github.com/joe-zxh/bycon/internal/logging"
-	"github.com/joe-zxh/bycon/util"
 )
 
 const (
@@ -48,19 +48,18 @@ type BYCONCore struct {
 	LogMut sync.Mutex
 
 	// Log        map[data.EntryID]*data.Entry // bycon的log是一个数组，因为需要保证连续，leader可以处理log inconsistency，而pbft不需要。client只有执行完上一条指令后，才会发送下一条请求，所以顺序 并没有问题。
-	cps        map[int]*CheckPoint
-	WaterLow   uint32
-	WaterHigh  uint32
-	F          uint32
-	Q          uint32
-	N          uint32
-	monitor    bool
-	Change     *time.Timer
-	Changing   bool                // Indicate if this node is changing view
-	state      interface{}         // Deterministic state machine's state
-	ApplyQueue *util.PriorityQueue // 因为PBFT的特殊性(log是一个map，而不是list)，所以这里需要一个applyQueue。
-	vcs        map[uint32][]*ViewChangeArgs
-	lastcp     uint32
+	cps       map[int]*CheckPoint
+	WaterLow  uint32
+	WaterHigh uint32
+	F         uint32
+	Q         uint32
+	N         uint32
+	monitor   bool
+	Change    *time.Timer
+	Changing  bool        // Indicate if this node is changing view
+	state     interface{} // Deterministic state machine's state
+	vcs       map[uint32][]*ViewChangeArgs
+	lastcp    uint32
 
 	Leader   uint32 // view改变的时候，再改变
 	IsLeader bool   // view改变的时候，再改变
@@ -76,7 +75,6 @@ func (bycon *BYCONCore) CommandSetLen(command data.Command) int {
 	return bycon.cmdCache.Len()
 }
 
-// CreateProposal creates a new proposal
 func (bycon *BYCONCore) GetProposeCommands(timeout bool) *([]data.Command) {
 
 	var batch []data.Command
@@ -90,6 +88,28 @@ func (bycon *BYCONCore) GetProposeCommands(timeout bool) *([]data.Command) {
 	return &batch
 }
 
+// CreateProposal creates a new proposal
+func (bycon *BYCONCore) CreateProposal(timeout bool) *data.PrePrepareArgs {
+
+	var batch []data.Command
+
+	if timeout { // timeout的时候，不管够不够batch都要发起共识。
+		batch = bycon.cmdCache.RetriveFirst(bycon.Config.BatchSize)
+	} else {
+		batch = bycon.cmdCache.RetriveExactlyFirst(bycon.Config.BatchSize)
+	}
+
+	if batch == nil {
+		return nil
+	}
+	e := &data.PrePrepareArgs{
+		View:     bycon.View,
+		Seq:      bycon.TSeq.Inc(),
+		Commands: &batch,
+	}
+	return e
+}
+
 func (bycon *BYCONCore) InitLog() {
 	bycon.LogMut.Lock()
 	defer bycon.LogMut.Unlock()
@@ -100,15 +120,10 @@ func (bycon *BYCONCore) InitLog() {
 	}
 
 	nonce := &data.Entry{
-		PP:            &dPP,
-		PreparedCert:  nil,
-		Prepared:      true,
-		CommittedCert: nil,
-		Committed:     true,
-		PreEntryHash:  &data.EntryHash{},
-		Digest:        &data.EntryHash{},
-		PrepareHash:   &data.EntryHash{},
-		CommitHash:    &data.EntryHash{},
+		PP:           &dPP,
+		Committed:    true,
+		PreEntryHash: &data.EntryHash{},
+		Digest:       &data.EntryHash{},
 	}
 
 	bycon.Log = append([]*data.Entry{}, nonce)
@@ -129,22 +144,21 @@ func New(conf *config.ReplicaConfig) *BYCONCore {
 		Exec:     make(chan []data.Command, 1),
 
 		// bycon
-		ID:         uint32(conf.ID),
-		seqmap:     make(map[data.EntryID]uint32),
-		View:       1,
-		Apply:      0,
-		cps:        make(map[int]*CheckPoint),
-		WaterLow:   0,
-		WaterHigh:  2 * checkpointDiv,
-		F:          uint32(len(conf.Replicas)-1) / 3,
-		N:          uint32(len(conf.Replicas)),
-		monitor:    false,
-		Change:     nil,
-		Changing:   false,
-		state:      make([]interface{}, 1),
-		ApplyQueue: util.NewPriorityQueue(),
-		vcs:        make(map[uint32][]*ViewChangeArgs),
-		lastcp:     0,
+		ID:        uint32(conf.ID),
+		seqmap:    make(map[data.EntryID]uint32),
+		View:      1,
+		Apply:     0,
+		cps:       make(map[int]*CheckPoint),
+		WaterLow:  0,
+		WaterHigh: 2 * checkpointDiv,
+		F:         uint32(len(conf.Replicas)-1) / 3,
+		N:         uint32(len(conf.Replicas)),
+		monitor:   false,
+		Change:    nil,
+		Changing:  false,
+		state:     make([]interface{}, 1),
+		vcs:       make(map[uint32][]*ViewChangeArgs),
+		lastcp:    0,
 	}
 
 	bycon.InitLog()
@@ -200,7 +214,7 @@ func (bycon *BYCONCore) PutEntry(ent *data.Entry) {
 
 	// listLen == ent.PP.Seq
 	ent.PreEntryHash = bycon.Log[listLen-1].Digest
-	ent.GetCommitHash() // 把Digest都算出来，以免后一个entry添加的时候 PreEntryHash是空的。记得在Put的外部，给ent加锁。
+	ent.GetDigest()
 	bycon.Log = append(bycon.Log, ent)
 
 	bycon.waitEntry.Broadcast()
@@ -218,6 +232,35 @@ func (bycon *BYCONCore) GetEntryBySeq(seq uint32) *data.Entry {
 	}
 
 	return bycon.Log[seq]
+}
+
+func (bycon *BYCONCore) Prepared(ent *data.Entry) bool {
+	if len(ent.P) > int(2*bycon.F) {
+		// Key is the id of sender replica
+		validSet := make(map[uint32]bool)
+		for i, sz := 0, len(ent.P); i < sz; i++ {
+			if ent.P[i].View == ent.PP.View && ent.P[i].Seq == ent.PP.Seq && bytes.Equal(ent.P[i].Digest[:], ent.Digest[:]) {
+				validSet[ent.P[i].Sender] = true
+			}
+		}
+		return len(validSet) > int(2*bycon.F)
+	}
+	return false
+}
+
+// Locks : acquire s.lock before call this function
+func (bycon *BYCONCore) Committed(ent *data.Entry) bool {
+	if len(ent.C) > int(2*bycon.F) {
+		// Key is replica id
+		validSet := make(map[uint32]bool)
+		for i, sz := 0, len(ent.C); i < sz; i++ {
+			if ent.C[i].View == ent.PP.View && ent.C[i].Seq == ent.PP.Seq && bytes.Equal(ent.C[i].Digest[:], ent.Digest[:]) {
+				validSet[ent.C[i].Sender] = true
+			}
+		}
+		return len(validSet) > int(2*bycon.F)
+	}
+	return false
 }
 
 func (bycon *BYCONCore) ApplyCommands(commitSeq uint32) {

@@ -7,26 +7,15 @@ import "google/protobuf/empty.proto";
 option go_package = "github.com/joe-zxh/bycon/internal/proto";
 
 service BYCON {
-  rpc Ordering(OrderingArgs) returns (OrderingReply) {
+
+  rpc PrePrepare(PrePrepareArgs) returns (google.protobuf.Empty) {
   }
 
-  rpc PrePrepare(PrePrepareArgs) returns (PrePrepareReply) {
-  }
-
-  rpc Prepare(PrepareArgs) returns (PrepareReply) {
+  rpc Prepare(PrepareArgs) returns (google.protobuf.Empty) {
   }
 
   rpc Commit(CommitArgs) returns (google.protobuf.Empty) {
   }
-}
-
-message OrderingArgs { // request commands
-  repeated Command Commands = 1;
-}
-
-message OrderingReply {
-  uint32 Seq = 1;
-  PartialSig Sig = 2; // 同时也作为leader的PrepareReply
 }
 
 message PrePrepareArgs {
@@ -35,36 +24,19 @@ message PrePrepareArgs {
   repeated Command Commands = 3;
 }
 
-message PrePrepareReply {
-  PartialSig Sig = 1;
-}
-
+// 可以通过设置context的方式来获取Sender，但简单起见，直接设置Sender。
 message PrepareArgs {
   uint32 View = 1;
   uint32 Seq = 2;
-  QuorumCert QC = 3;
-}
-
-message PrepareReply {
-  PartialSig Sig = 1;
+  bytes Digest = 3;
+  uint32 Sender = 4;
 }
 
 message CommitArgs {
   uint32 View = 1;
   uint32 Seq = 2;
-  QuorumCert QC = 3;
+  bytes Digest = 3;
+  uint32 Sender = 4;
 }
 
 message Command {bytes Data = 1;}
-
-// ecdsa的签名
-message PartialSig {
-  int32 ReplicaID = 1;
-  bytes R = 2;
-  bytes S = 3;
-}
-
-message QuorumCert {
-  repeated PartialSig Sigs = 1;
-  bytes SigContent = 2;
-}
