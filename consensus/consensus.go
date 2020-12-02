@@ -114,7 +114,7 @@ func (bycon *BYCONCore) InitLog() {
 	bycon.LogMut.Lock()
 	defer bycon.LogMut.Unlock()
 	dPP := data.PrePrepareArgs{
-		View:     1,
+		View:     0,
 		Seq:      0,
 		Commands: nil,
 	}
@@ -165,7 +165,7 @@ func New(conf *config.ReplicaConfig) *BYCONCore {
 
 	bycon.waitEntry = sync.NewCond(&bycon.LogMut)
 
-	bycon.Q = bycon.F*2 + 1
+	bycon.Q = (bycon.F+bycon.N)/2 + 1
 	bycon.Leader = (bycon.View-1)%bycon.N + 1
 	bycon.IsLeader = (bycon.Leader == bycon.ID)
 
@@ -235,7 +235,7 @@ func (bycon *BYCONCore) GetEntryBySeq(seq uint32) *data.Entry {
 }
 
 func (bycon *BYCONCore) Prepared(ent *data.Entry) bool {
-	if len(ent.P) > int(2*bycon.F) {
+	if len(ent.P) >= int(bycon.Q) {
 		// Key is the id of sender replica
 		validSet := make(map[uint32]bool)
 		for i, sz := 0, len(ent.P); i < sz; i++ {
@@ -243,14 +243,14 @@ func (bycon *BYCONCore) Prepared(ent *data.Entry) bool {
 				validSet[ent.P[i].Sender] = true
 			}
 		}
-		return len(validSet) > int(2*bycon.F)
+		return len(validSet) > int(bycon.Q)
 	}
 	return false
 }
 
 // Locks : acquire s.lock before call this function
 func (bycon *BYCONCore) Committed(ent *data.Entry) bool {
-	if len(ent.C) > int(2*bycon.F) {
+	if len(ent.C) > int(bycon.Q) {
 		// Key is replica id
 		validSet := make(map[uint32]bool)
 		for i, sz := 0, len(ent.C); i < sz; i++ {
@@ -258,7 +258,7 @@ func (bycon *BYCONCore) Committed(ent *data.Entry) bool {
 				validSet[ent.C[i].Sender] = true
 			}
 		}
-		return len(validSet) > int(2*bycon.F)
+		return len(validSet) > int(bycon.Q)
 	}
 	return false
 }

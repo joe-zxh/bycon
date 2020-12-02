@@ -142,12 +142,14 @@ func (bycon *BYCON) Propose(timeout bool) {
 	if dPP == nil {
 		return
 	}
-	pPP := proto.PP2Proto(dPP)
-	go bycon.BroadcastPrePrepareRequest(pPP)
-	_, err := bycon.PrePrepare(context.TODO(), pPP)
-	if err != nil {
-		panic(err)
-	}
+	go func() {
+		pPP := proto.PP2Proto(dPP)
+		go bycon.BroadcastPrePrepareRequest(pPP)
+		_, err := bycon.PrePrepare(context.TODO(), pPP)
+		if err != nil {
+			panic(err)
+		}
+	}()
 }
 
 func (bycon *BYCON) BroadcastPrePrepareRequest(pPP *proto.PrePrepareArgs) {
