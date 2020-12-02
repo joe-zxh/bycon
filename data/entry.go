@@ -26,13 +26,29 @@ type EntryID struct {
 	N uint32
 }
 
+func (id1 *EntryID) IsOlder(id2 *EntryID) bool {
+	if (id1.V == id2.V && id1.N < id2.N) || id1.V < id2.V {
+		return true
+	} else {
+		return false
+	}
+}
+
+func (id1 *EntryID) IsOlderOrEqual(id2 *EntryID) bool {
+	if (id1.V == id2.V && id1.N <= id2.N) || id1.V < id2.V {
+		return true
+	} else {
+		return false
+	}
+}
+
 type Entry struct {
-	Mut        sync.Mutex
-	PP         *PrePrepareArgs
-	P          []*PrepareArgs
-	SendCommit bool
-	C          []*CommitArgs
-	Committed  bool
+	Mut       sync.Mutex
+	PP        *PrePrepareArgs
+	P         []*PrepareArgs
+	Prepared  bool
+	C         []*CommitArgs
+	Committed bool
 
 	PreEntryHash *EntryHash
 	Digest       *EntryHash

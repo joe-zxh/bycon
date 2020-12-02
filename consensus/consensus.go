@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/joe-zxh/bycon/internal/proto"
 	"go.uber.org/atomic"
 	"log"
 	"sync"
@@ -36,7 +37,7 @@ type BYCONCore struct {
 
 	Exec chan []data.Command
 
-	// from bycon
+	// from pbft
 	Mut    sync.Mutex // Lock for all internal data
 	ID     uint32
 	TSeq   atomic.Uint32           // Total sequence number of next request
@@ -44,10 +45,11 @@ type BYCONCore struct {
 	View   uint32
 	Apply  uint32 // Sequence number of last executed request
 
-	Log    []*data.Entry
-	LogMut sync.Mutex
+	Log                   []*data.Entry
+	LogMut                sync.Mutex
+	LastPreparedID        data.EntryID
+	UpdateLastPreparedMut sync.Mutex
 
-	// Log        map[data.EntryID]*data.Entry // bycon的log是一个数组，因为需要保证连续，leader可以处理log inconsistency，而pbft不需要。client只有执行完上一条指令后，才会发送下一条请求，所以顺序 并没有问题。
 	cps       map[int]*CheckPoint
 	WaterLow  uint32
 	WaterHigh uint32
@@ -64,7 +66,11 @@ type BYCONCore struct {
 	Leader   uint32 // view改变的时候，再改变
 	IsLeader bool   // view改变的时候，再改变
 
-	waitEntry *sync.Cond
+	waitEntry      *sync.Cond
+	ViewChangeChan chan struct{}
+	VoteFor        map[uint32]uint32              // key: view  value: nodeID
+	VoteFinish     map[uint32]bool                // key: view value: is vote finish
+	VoteCount      map[uint32](map[uint32]uint32) // key: view  value: (key: candidate value: count)
 }
 
 func (bycon *BYCONCore) AddCommand(command data.Command) {
@@ -143,7 +149,7 @@ func New(conf *config.ReplicaConfig) *BYCONCore {
 		cmdCache: data.NewCommandSet(),
 		Exec:     make(chan []data.Command, 1),
 
-		// bycon
+		// from pbft
 		ID:        uint32(conf.ID),
 		seqmap:    make(map[data.EntryID]uint32),
 		View:      1,
@@ -159,6 +165,11 @@ func New(conf *config.ReplicaConfig) *BYCONCore {
 		state:     make([]interface{}, 1),
 		vcs:       make(map[uint32][]*ViewChangeArgs),
 		lastcp:    0,
+
+		ViewChangeChan: make(chan struct{}, 1),
+		VoteFor:        make(map[uint32]uint32),
+		VoteFinish:     make(map[uint32]bool),
+		VoteCount:      make(map[uint32](map[uint32]uint32)),
 	}
 
 	bycon.InitLog()
@@ -277,6 +288,36 @@ func (bycon *BYCONCore) ApplyCommands(commitSeq uint32) {
 			bycon.Apply++
 		} else {
 			break
+		}
+	}
+}
+
+func (bycon *BYCONCore) UpdateLastPreparedID(ent *data.Entry) {
+	bycon.UpdateLastPreparedMut.Lock()
+	defer bycon.UpdateLastPreparedMut.Unlock()
+
+	if bycon.LastPreparedID.IsOlder(&data.EntryID{V: ent.PP.View, N: ent.PP.Seq}) {
+		bycon.LastPreparedID.V = ent.PP.View
+		bycon.LastPreparedID.N = ent.PP.Seq
+	}
+}
+
+func (bycon *BYCONCore) UpdateVotes(pVC *proto.VoteConfirmArgs) {
+	if !bycon.VoteFinish[pVC.NewView] {
+		_, ok := bycon.VoteCount[pVC.NewView]
+		if !ok {
+			bycon.VoteCount[pVC.NewView] = make(map[uint32]uint32)
+		}
+		bycon.VoteCount[pVC.NewView][pVC.VoteFor]++
+
+		if bycon.VoteCount[pVC.NewView][pVC.VoteFor] >= bycon.Q {
+
+			logger.Printf("enter new view: %d\n", pVC.NewView)
+			bycon.ViewChangeChan <- struct{}{}
+
+			bycon.Leader = pVC.VoteFor
+			bycon.IsLeader = (bycon.ID == bycon.Leader)
+			bycon.VoteFinish[pVC.NewView] = true
 		}
 	}
 }

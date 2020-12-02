@@ -16,6 +16,41 @@ service BYCON {
 
   rpc Commit(CommitArgs) returns (google.protobuf.Empty) {
   }
+
+  // view change...
+  rpc PreRequestVote(PreRequestVoteArgs) returns (PreRequestVoteReply) {
+  }
+
+  rpc RequestVote(RequestVoteArgs) returns (google.protobuf.Empty) {
+  }
+
+  rpc VoteConfirm(VoteConfirmArgs) returns (google.protobuf.Empty) {
+  }
+
+}
+
+message PreRequestVoteArgs {
+  uint32 NewView = 1;
+  uint32 LastPreparedView = 2;
+  uint32 LastPreparedSeq = 3;
+}
+
+message PreRequestVoteReply {
+  uint32 ReceiverLastPreparedView = 1;
+  uint32 ReceiverLastPreparedSeq = 2;
+
+}
+
+message RequestVoteArgs {
+  uint32 NewView = 1;
+  uint32 CandidateID = 2;
+  bytes Digest = 3;
+}
+
+message VoteConfirmArgs {
+  uint32 NewView = 1;
+  uint32 NodeID = 2;
+  uint32 VoteFor = 3;
 }
 
 message PrePrepareArgs {

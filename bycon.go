@@ -1,11 +1,13 @@
 package bycon
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/joe-zxh/bycon/data"
+	"github.com/joe-zxh/bycon/util"
 	"log"
 	"net"
 	"sync"
@@ -246,7 +248,7 @@ func (bycon *BYCON) Prepare(ctx context.Context, pP *proto.PrepareArgs) (*empty.
 		ent.Mut.Lock()
 
 		ent.P = append(ent.P, dp)
-		if ent.PP != nil && !ent.SendCommit && bycon.Prepared(ent) {
+		if ent.PP != nil && !ent.Prepared && bycon.Prepared(ent) {
 
 			pC := &proto.CommitArgs{
 				View:   ent.PP.View,
@@ -255,7 +257,8 @@ func (bycon *BYCON) Prepare(ctx context.Context, pP *proto.PrepareArgs) (*empty.
 				Sender: bycon.ID,
 			}
 
-			ent.SendCommit = true
+			ent.Prepared = true
+			bycon.UpdateLastPreparedID(ent)
 			ent.Mut.Unlock()
 
 			logger.Printf("[B/Commit]: view: %d, seq: %d\n", dp.View, dp.Seq)
@@ -286,7 +289,7 @@ func (bycon *BYCON) Commit(_ context.Context, pC *proto.CommitArgs) (*empty.Empt
 
 		ent.Mut.Lock()
 		ent.C = append(ent.C, dC)
-		if !ent.Committed && ent.SendCommit && bycon.Committed(ent) {
+		if !ent.Committed && ent.Prepared && bycon.Committed(ent) {
 			logger.Printf("Committed entry: view: %d, seq: %d\n", ent.PP.View, ent.PP.Seq)
 			ent.Committed = true
 			ent.Mut.Unlock()
@@ -298,6 +301,136 @@ func (bycon *BYCON) Commit(_ context.Context, pC *proto.CommitArgs) (*empty.Empt
 	} else {
 		bycon.Mut.Unlock()
 	}
+	return &empty.Empty{}, nil
+}
+
+// view change...
+func (bycon *BYCON) StartViewChange() {
+	bycon.Mut.Lock()
+	defer bycon.Mut.Unlock()
+
+	logger.Printf("StartViewChange: \n")
+
+	bycon.View += 1
+
+	pPRV := &proto.PreRequestVoteArgs{
+		NewView:          bycon.View,
+		LastPreparedView: bycon.LastPreparedID.V,
+		LastPreparedSeq:  bycon.LastPreparedID.N,
+	}
+
+	pVC := &proto.VoteConfirmArgs{
+		NewView: bycon.View,
+		NodeID:  bycon.ID,
+		VoteFor: bycon.ID,
+	}
+
+	bycon.VoteFor[bycon.View] = bycon.ID
+	bycon.UpdateVotes(pVC)
+
+	go bycon.BroadcastPreRequestVote(pPRV)
+	go bycon.BroadcastVoteConfirm(pVC)
+}
+
+func (bycon *BYCON) BroadcastPreRequestVote(pPRV *proto.PreRequestVoteArgs) {
+	logger.Printf("Broadcast PreRequestVote: New view: %d, Candidate ID: %d\n", pPRV.NewView, bycon.ID)
+
+	for rid, client := range bycon.nodes {
+		if rid != bycon.Config.ID {
+			go func(cli *proto.BYCONClient) {
+				pPRVReply, err := (*cli).PreRequestVote(context.TODO(), pPRV)
+				util.PanicErr(err)
+
+				if bycon.LastPreparedID.IsOlderOrEqual(&data.EntryID{V: pPRVReply.ReceiverLastPreparedView, N: pPRVReply.ReceiverLastPreparedSeq}) {
+					ent := bycon.GetEntryBySeq(pPRVReply.ReceiverLastPreparedSeq)
+					if ent.PP.View != pPRVReply.ReceiverLastPreparedView {
+						return
+					}
+
+					pRV := &proto.RequestVoteArgs{
+						NewView:     pPRV.NewView,
+						CandidateID: bycon.ID,
+						Digest:      ent.GetDigest().ToSlice(),
+					}
+					_, err = (*cli).RequestVote(context.TODO(), pRV)
+					util.PanicErr(err)
+				}
+
+			}(client)
+		}
+	}
+}
+
+func (bycon *BYCON) PreRequestVote(_ context.Context, pPRV *proto.PreRequestVoteArgs) (*proto.PreRequestVoteReply, error) {
+	bycon.Mut.Lock()
+	defer bycon.Mut.Unlock()
+
+	logger.Printf("Receive PreRequestVote: new view: %d\n", pPRV.NewView)
+
+	_, ok := bycon.VoteFor[pPRV.NewView]
+
+	if pPRV.NewView > bycon.View && !ok &&
+		bycon.LastPreparedID.IsOlderOrEqual(&data.EntryID{V: pPRV.LastPreparedView, N: pPRV.LastPreparedSeq}) {
+
+		return &proto.PreRequestVoteReply{
+			ReceiverLastPreparedView: bycon.LastPreparedID.V,
+			ReceiverLastPreparedSeq:  bycon.LastPreparedID.N,
+		}, nil
+	}
+
+	return &proto.PreRequestVoteReply{
+		ReceiverLastPreparedView: ^uint32(0), // 不接受
+		ReceiverLastPreparedSeq:  ^uint32(0),
+	}, nil
+}
+
+func (bycon *BYCON) RequestVote(_ context.Context, pRV *proto.RequestVoteArgs) (*empty.Empty, error) {
+	bycon.Mut.Lock()
+	defer bycon.Mut.Unlock()
+
+	logger.Printf("Receive RequestVote: new view: %d\n", pRV.NewView)
+
+	_, ok := bycon.VoteFor[pRV.NewView]
+
+	ent := bycon.GetEntryBySeq(bycon.LastPreparedID.N)
+
+	if pRV.NewView >= bycon.View && !ok &&
+		bytes.Equal(pRV.Digest, ent.GetDigest().ToSlice()) {
+
+		pVC := &proto.VoteConfirmArgs{
+			NewView: pRV.NewView,
+			NodeID:  bycon.ID,
+			VoteFor: pRV.CandidateID,
+		}
+
+		bycon.VoteFor[pRV.NewView] = pRV.CandidateID
+		bycon.UpdateVotes(pVC)
+		go bycon.BroadcastVoteConfirm(pVC)
+	}
+
+	return &empty.Empty{}, nil
+}
+
+func (bycon *BYCON) BroadcastVoteConfirm(pVC *proto.VoteConfirmArgs) {
+	logger.Printf("Broadcast VoteConfirm: NewView: %d, CandidateID: %d \n", pVC.NewView, pVC.VoteFor)
+
+	for rid, client := range bycon.nodes {
+		if rid != bycon.Config.ID {
+			go func(cli *proto.BYCONClient) {
+				_, err := (*cli).VoteConfirm(context.TODO(), pVC)
+				util.PanicErr(err)
+			}(client)
+		}
+	}
+}
+
+func (bycon *BYCON) VoteConfirm(_ context.Context, pVC *proto.VoteConfirmArgs) (*empty.Empty, error) {
+	bycon.Mut.Lock()
+	defer bycon.Mut.Unlock()
+
+	logger.Printf("Receive VoteConfirm: new view: %d\n", pVC.NewView)
+
+	bycon.UpdateVotes(pVC)
 	return &empty.Empty{}, nil
 }
 
