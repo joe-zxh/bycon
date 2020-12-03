@@ -4,6 +4,7 @@ profileMem/
 
 # Binaries for programs and plugins
 byconclient
+byconvcclient
 byconserver
 *.exe
 *.exe~

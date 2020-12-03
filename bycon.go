@@ -146,11 +146,9 @@ func (bycon *BYCON) Propose(timeout bool) {
 	}
 	go func() {
 		pPP := proto.PP2Proto(dPP)
+		pPP.Sender = bycon.ID
 		go bycon.BroadcastPrePrepareRequest(pPP)
-		_, err := bycon.PrePrepare(context.TODO(), pPP)
-		if err != nil {
-			panic(err)
-		}
+		bycon.server.PrePrepare(context.TODO(), pPP)
 	}()
 }
 
@@ -200,7 +198,7 @@ func (bycon *BYCON) BroadcastCommitRequest(pC *proto.CommitArgs) {
 	}
 }
 
-func (bycon *BYCON) PrePrepare(_ context.Context, pPP *proto.PrePrepareArgs) (*empty.Empty, error) {
+func (bycon *byconServer) PrePrepare(_ context.Context, pPP *proto.PrePrepareArgs) (*empty.Empty, error) {
 
 	logger.Printf("PrePrepare: view:%d, seq:%d\n", pPP.View, pPP.Seq)
 
@@ -235,7 +233,7 @@ func (bycon *BYCON) PrePrepare(_ context.Context, pPP *proto.PrePrepareArgs) (*e
 	}
 }
 
-func (bycon *BYCON) Prepare(ctx context.Context, pP *proto.PrepareArgs) (*empty.Empty, error) {
+func (bycon *byconServer) Prepare(ctx context.Context, pP *proto.PrepareArgs) (*empty.Empty, error) {
 
 	logger.Printf("Prepare: view:%d, seq:%d\n", pP.View, pP.Seq)
 
@@ -275,7 +273,7 @@ func (bycon *BYCON) Prepare(ctx context.Context, pP *proto.PrepareArgs) (*empty.
 	return &empty.Empty{}, nil
 }
 
-func (bycon *BYCON) Commit(_ context.Context, pC *proto.CommitArgs) (*empty.Empty, error) {
+func (bycon *byconServer) Commit(_ context.Context, pC *proto.CommitArgs) (*empty.Empty, error) {
 
 	logger.Printf("Commit: view:%d, seq:%d\n", pC.View, pC.Seq)
 

@@ -54,24 +54,25 @@ message VoteConfirmArgs {
 }
 
 message PrePrepareArgs {
-  uint32 View = 1;
-  uint32 Seq = 2;
-  repeated Command Commands = 3;
+  uint32 Sender = 1;
+  uint32 View = 2;
+  uint32 Seq = 3;
+  repeated Command Commands = 4;
 }
 
 // 可以通过设置context的方式来获取Sender，但简单起见，直接设置Sender。
 message PrepareArgs {
-  uint32 View = 1;
-  uint32 Seq = 2;
-  bytes Digest = 3;
-  uint32 Sender = 4;
+  uint32 Sender = 1;
+  uint32 View = 2;
+  uint32 Seq = 3;
+  bytes Digest = 4;
 }
 
 message CommitArgs {
-  uint32 View = 1;
-  uint32 Seq = 2;
-  bytes Digest = 3;
-  uint32 Sender = 4;
+  uint32 Sender = 1;
+  uint32 View = 2;
+  uint32 Seq = 3;
+  bytes Digest = 4;
 }
 
 message Command {bytes Data = 1;}
