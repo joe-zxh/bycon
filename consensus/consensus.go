@@ -315,6 +315,7 @@ func (bycon *BYCONCore) UpdateVotes(pVC *proto.VoteConfirmArgs) {
 			logger.Printf("enter new view: %d\n", pVC.NewView)
 			bycon.ViewChangeChan <- struct{}{}
 
+			bycon.View = pVC.NewView
 			bycon.Leader = pVC.VoteFor
 			bycon.IsLeader = (bycon.ID == bycon.Leader)
 			bycon.VoteFinish[pVC.NewView] = true
