@@ -319,6 +319,7 @@ func (bycon *BYCONCore) UpdateVotes(pVC *proto.VoteConfirmArgs) {
 			bycon.Leader = pVC.VoteFor
 			bycon.IsLeader = (bycon.ID == bycon.Leader)
 			bycon.VoteFinish[pVC.NewView] = true
+			bycon.VoteFor[pVC.NewView] = pVC.VoteFor
 		}
 	}
 }
