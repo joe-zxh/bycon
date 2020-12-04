@@ -313,13 +313,13 @@ func (bycon *BYCONCore) UpdateVotes(pVC *proto.VoteConfirmArgs) {
 		if bycon.VoteCount[pVC.NewView][pVC.VoteFor] >= bycon.Q {
 
 			logger.Printf("enter new view: %d\n", pVC.NewView)
-			bycon.ViewChangeChan <- struct{}{}
-
 			bycon.View = pVC.NewView
 			bycon.Leader = pVC.VoteFor
 			bycon.IsLeader = (bycon.ID == bycon.Leader)
 			bycon.VoteFinish[pVC.NewView] = true
 			bycon.VoteFor[pVC.NewView] = pVC.VoteFor
+
+			bycon.ViewChangeChan <- struct{}{}
 		}
 	}
 }

@@ -339,7 +339,7 @@ func (bycon *BYCON) BroadcastPreRequestVote(pPRV *proto.PreRequestVoteArgs) {
 				pPRVReply, err := (*cli).PreRequestVote(context.TODO(), pPRV)
 				util.PanicErr(err)
 
-				if bycon.LastPreparedID.IsOlderOrEqual(&data.EntryID{V: pPRVReply.ReceiverLastPreparedView, N: pPRVReply.ReceiverLastPreparedSeq}) {
+				if bycon.LastPreparedID.IsNewerOrEqual(&data.EntryID{V: pPRVReply.ReceiverLastPreparedView, N: pPRVReply.ReceiverLastPreparedSeq}) {
 					ent := bycon.GetEntryBySeq(pPRVReply.ReceiverLastPreparedSeq)
 					if ent.PP.View != pPRVReply.ReceiverLastPreparedView {
 						return

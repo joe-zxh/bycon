@@ -42,6 +42,14 @@ func (id1 *EntryID) IsOlderOrEqual(id2 *EntryID) bool {
 	}
 }
 
+func (id1 *EntryID) IsNewerOrEqual(id2 *EntryID) bool {
+	if (id1.V == id2.V && id1.N >= id2.N) || id1.V > id2.V {
+		return true
+	} else {
+		return false
+	}
+}
+
 type Entry struct {
 	Mut       sync.Mutex
 	PP        *PrePrepareArgs
