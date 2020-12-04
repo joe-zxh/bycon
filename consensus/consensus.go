@@ -177,7 +177,7 @@ func New(conf *config.ReplicaConfig) *BYCONCore {
 	bycon.waitEntry = sync.NewCond(&bycon.LogMut)
 
 	bycon.Q = (bycon.F+bycon.N)/2 + 1
-	bycon.Leader = (bycon.View-1)%bycon.N + 1
+	bycon.Leader = 1
 	bycon.IsLeader = (bycon.Leader == bycon.ID)
 
 	// Put an initial stable checkpoint
