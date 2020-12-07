@@ -4,8 +4,12 @@ profileMem/
 
 # Binaries for programs and plugins
 byconclient
+!byconclient/
 byconvcclient
+!byconvcclient/
 byconserver
+!byconserver/
+
 *.exe
 *.exe~
 *.dll
